@@ -1,338 +1,139 @@
 import random
+from hyperHeuristic_Rules import Task, Processor, Scheduler, SEQUENCING_RULES, SCHEDULING_RULES
 
-# Define Task and Processor classes
-class Task:
-    def __init__(self, task_id, workload, priority=1, deadline=None):
-        self.task_id = task_id
-        self.workload = workload  # Computation time in cycles or seconds
-        self.priority = priority
-        self.deadline = deadline
-        self.assigned_processor = None
-
-class Processor:
-    def __init__(self, proc_id, speed, power_usage):
-        self.proc_id = proc_id
-        self.speed = speed  # Instructions per second or computational power
-        self.power_usage = power_usage
-        self.tasks = []  # Tasks assigned to this processor
-        self.total_workload = 0  # Total workload assigned to this processor
-
-    def execute_task(self, task):
-        execution_time = task.workload / self.speed
-        # print(f"Task {task.task_id} executed on Processor {self.proc_id} in {execution_time:.2f} seconds.")
-        self.tasks.append(task)
-        self.total_workload += execution_time  # Add the task workload to the processor's total workload
-
-    def get_total_workload(self):
-        return self.total_workload  # Return the total workload of the processor
-
-# Define Scheduler class with both Min-Min and Max-Min heuristics
-class Scheduler:
-    def __init__(self, tasks, processors):
-        self.tasks = tasks
-        self.processors = processors
-    
-    def schedule_tasks(self, policy, subset):
-        match policy:
-            case "first_in_first_out":
-                self.fcfs_schedule(subset)
-            case "round_robin":
-                self.round_robin_schedule(subset)
-            case "priority_based":
-                self.priority_based_schedule(subset)
-            case "min_min":
-                self.min_min_schedule(subset)
-            case "min_queued_elements":
-                self.min_queued_elements(subset)
-            case "max_min":
-                self.max_min_schedule(subset)
-            case "short_job_first":
-                self.sjf_schedule(subset)
-            case "long_job_first":
-                self.ljf_schedule(subset)
-            case "load_balancing":
-                self.load_balancing_schedule(subset)
-            case "greedy_best_fit":
-                self.greedy_best_fit_schedule(subset)
-            case "weighted_round_robin":
-                self.weighted_round_robin_schedule(subset)
-            case "threshold_based":
-                self.threshold_based_schedule(subset)
-            case _:
-                raise ValueError(f"Unknown scheduling policy: {policy}")
- 
-    
-    def assign_task_to_processor(self, task, processor):
-        task.assigned_processor = processor.proc_id
-        processor.execute_task(task)
-
-    # Function to calculate the total workload on a processor
-    def select_best_processor(self, task):
-        # Select processor with the least total workload
-        return min(self.processors, key=lambda p: p.get_total_workload())
-    
-    # FCFS heuristic (First-Come, First-Served)
-    def fcfs_schedule(self, task_subset):
-        for task in task_subset:
-            best_processor = self.select_best_processor(task)
-            self.assign_task_to_processor(task, best_processor)
-
-    # Simple Round-Robin scheduling across processors
-    def round_robin_schedule(self, task_subset):
-        proc_idx = 0
-        for task in task_subset:
-            self.assign_task_to_processor(task, self.processors[proc_idx])
-            proc_idx = (proc_idx + 1) % len(self.processors)
-
-    # SJF heuristic (Shortest Job First)
-    def sjf_schedule(self, task_subset):
-        sorted_tasks = sorted(task_subset, key=lambda t: t.workload)
-        for task in sorted_tasks:
-            best_processor = self.select_best_processor(task)
-            self.assign_task_to_processor(task, best_processor)
-
-    # LJF heuristic (Longest Job First)
-    def ljf_schedule(self, task_subset):
-        sorted_tasks = sorted(task_subset, key=lambda t: t.workload, reverse=True)
-        for task in sorted_tasks:
-            best_processor = self.select_best_processor(task)
-            self.assign_task_to_processor(task, best_processor)
-
-    # Priority-Based Scheduling (High Priority First)
-    def priority_based_schedule(self, task_subset):
-        sorted_tasks = sorted(task_subset, key=lambda t: t.priority, reverse=True)
-        for task in sorted_tasks:
-            best_processor = self.select_best_processor(task)
-            self.assign_task_to_processor(task, best_processor)
-
-    # Select processor with the least number of tasks or fastest
-    def min_queued_elements(self, task_subset):
-        for task in task_subset:
-            best_processor = min(self.processors, key=lambda p: len(p.tasks))
-            self.assign_task_to_processor(task, best_processor)
-
-    # Load Balancing Schedule (Least Total Workload)
-    def load_balancing_schedule(self, task_subset):
-        for task in task_subset:
-            best_processor = min(self.processors, key=lambda p: sum(t.workload for t in p.tasks))
-            self.assign_task_to_processor(task, best_processor)
-
-    # Weighted Round-Robin scheduling across processors based on speed
-    def weighted_round_robin_schedule(self, task_subset):
-        total_speed = sum(p.speed for p in self.processors)
-        weights = [p.speed / total_speed for p in self.processors]
-        proc_idx = 0
-        for task in task_subset:
-            self.assign_task_to_processor(task, self.processors[proc_idx])
-            proc_idx = (proc_idx + int(1 / weights[proc_idx])) % len(self.processors)
-
-    # Greedy Best-Fit heuristic (chooses processor that finishes the task the quickest)
-    def greedy_best_fit_schedule(self, task_subset):
-        for task in task_subset:
-            best_processor = min(self.processors, key=lambda p: task.workload / p.speed)
-            self.assign_task_to_processor(task, best_processor)
-
-    # Threshold based heuristic
-    def threshold_based_schedule(self, task_subset, threshold=200):
-        for task in task_subset:
-            if task.workload > threshold:
-                # Assign to the highest-speed processor
-                best_processor = max(self.processors, key=lambda p: p.speed)
-            else:
-                # Assign to the least-loaded processor (by number of tasks)
-                best_processor = min(self.processors, key=lambda p: len(p.tasks))
-            
-            self.assign_task_to_processor(task, best_processor)
-        
-    # Min-Min heuristic
-    def min_min_schedule(self, task_subset):
-        while task_subset:
-            min_task = None
-            min_time = float('inf')
-            best_processor = None
-
-            # For each task, find the processor that would give the maximum completion time
-            for task in task_subset:
-                for processor in self.processors:
-                    # Calculate the completion time if the task is assigned to the processor
-                    time_to_complete = task.workload / processor.speed
-                    
-                    # Find the maximum time considering the current load on the processor
-                    current_total_time = processor.get_total_workload() + time_to_complete
-                    
-                    if current_total_time < min_time:
-                        min_time = current_total_time
-                        min_task = task
-                        best_processor = processor
-            
-            # Assign the task with the minimum completion time to the selected processor
-            self.assign_task_to_processor(min_task, best_processor)
-            task_subset.remove(min_task)
-
-    # Max-Min heuristic
-    def max_min_schedule(self, task_subset):
-        while task_subset:
-            tasks_min = []       # Store the minimum times for each task
-            processors_min = []  # Store the corresponding processors for those minimum times
-
-            # For each task, find the processor with the minimum completion time
-            for task in task_subset:
-                min_time = float('inf')  # Reset minimum time for each task
-                best_processor = None
-                
-                for processor in self.processors:
-                    # Calculate the completion time if the task is assigned to this processor
-                    time_to_complete = task.workload / processor.speed
-                    current_total_time = processor.get_total_workload() + time_to_complete
-                    
-                    # Find the processor with the minimum time for this task
-                    if current_total_time < min_time:
-                        min_time = current_total_time
-                        best_processor = processor
-                
-                # Store the task's minimum time and the corresponding processor
-                tasks_min.append((task, min_time))
-                processors_min.append(best_processor)
-
-            # Now, find the task with the maximum of the minimum completion times
-            max_task, max_time = max(tasks_min, key=lambda x: x[1])  # Get the task with the max of minimum times
-            best_processor = processors_min[tasks_min.index((max_task, max_time))]  # Get its best processor
-
-            # Assign the selected task to the best processor
-            self.assign_task_to_processor(max_task, best_processor)
-            
-            # Remove the task from the task subset
-            task_subset.remove(max_task)
-
-# Create 20 tasks with random workloads
-tasks = [Task(task_id=i, workload=random.randint(50, 300)) for i in range(1, 51)]
-
-
-# Create 4 processors with varying speeds
-processors = [
-    Processor(proc_id=1, speed=10, power_usage=50),
-    Processor(proc_id=2, speed=20, power_usage=70),
-    Processor(proc_id=3, speed=15, power_usage=60),
-    Processor(proc_id=4, speed=25, power_usage=80)
-]
-    
-# Create 20 tasks with random workloads
+# ------------------------------------------------------------------ #
+# Problem setup                                                        #
+# ------------------------------------------------------------------ #
+random.seed(42)
 tasks = [Task(task_id=i, workload=random.randint(50, 300)) for i in range(1, 21)]
-
-# Create 4 processors with varying speeds
 processors = [
     Processor(proc_id=1, speed=10, power_usage=50),
     Processor(proc_id=2, speed=20, power_usage=70),
     Processor(proc_id=3, speed=15, power_usage=60),
-    Processor(proc_id=4, speed=25, power_usage=80)
+    Processor(proc_id=4, speed=25, power_usage=80),
 ]
-
-# Initialize the scheduler
 scheduler = Scheduler(tasks, processors)
 
-# Divide tasks: first 10 for Min-Min, remaining 10 for Max-Min
-first_half_tasks = tasks[:10]
-second_half_tasks = tasks[10:]
-
-# Example sequence of heuristics
-available_heuristics = ['first_in_first_out', 'min_min', 'max_min', 'min_queued_elements', 
-                        'round_robin', 'short_job_first', 'long_job_first', 'priority_based', 'load_balancing']
-
-# Genetic Algorithm Parameters
-population_size = 10  # Number of sequences in population
-mutation_rate = 0.2   # Chance of mutation
-num_generations = 20  # Number of generations to evolve
-sequence_length = 4   # Length of each heuristic sequence
-
-
-# A function that applies a sequence of scheduling heuristics and returns the makespan
-def evaluate_sequence(scheduler, sequence, tasks, processors):
-    task_subset = tasks[:]  # Make a copy of tasks
-    for heuristic in sequence:
-        scheduler.schedule_tasks(policy=heuristic, subset=task_subset)
-    makespan = max(processor.get_total_workload() for processor in processors)
-    return makespan  # Calculate the makespan
+# ------------------------------------------------------------------ #
+# GA parameters                                                        #
+# ------------------------------------------------------------------ #
+# A chromosome is a list of (sequencing_rule, scheduling_rule) pairs,
+# one pair per phase. Tasks are split into NUM_PHASES equal subsets,
+# and each phase applies its own rule pair to its subset.
+#
+# Example chromosome (NUM_PHASES=2):
+#   [('short_job_first', 'min_min'), ('long_job_first', 'max_min')]
+NUM_PHASES = 2
+POPULATION_SIZE = 10
+MUTATION_RATE = 0.2
+NUM_GENERATIONS = 20
 
 
-# Create an initial population of random sequences
-def initialize_population():
-    population = []
-    for _ in range(population_size):
-        sequence = random.sample(available_heuristics, sequence_length)
-        population.append(sequence)
-    return population
+# ------------------------------------------------------------------ #
+# GA operators                                                         #
+# ------------------------------------------------------------------ #
+def evaluate(chromosome):
+    """Apply the chromosome to a fresh processor state; return makespan."""
+    for p in processors:
+        p.reset()
+    for t in tasks:
+        t.assigned_processor = None
+
+    phase_size = len(tasks) // NUM_PHASES
+    for i, (seq_rule, sched_rule) in enumerate(chromosome):
+        start = i * phase_size
+        # Last phase takes any remainder tasks
+        end = start + phase_size if i < NUM_PHASES - 1 else len(tasks)
+        subset = tasks[start:end]
+        ordered = scheduler.sequencing_tasks(seq_rule, subset)
+        scheduler.schedule_tasks(sched_rule, ordered)
+
+    return max(p.get_total_workload() for p in processors)
 
 
-# Selection: Choose the top N sequences based on fitness (lowest makespan)
-def select(population, fitnesses, num_selected):
-    selected_indices = sorted(range(len(fitnesses)), key=lambda i: fitnesses[i])[:num_selected]
-    return [population[i] for i in selected_indices]
+def random_chromosome():
+    return [
+        (random.choice(SEQUENCING_RULES), random.choice(SCHEDULING_RULES))
+        for _ in range(NUM_PHASES)
+    ]
 
 
-# Crossover: Combine two sequences to create a new sequence
+def select(population, fitnesses, n):
+    """Return the n chromosomes with the lowest makespan."""
+    ranked = sorted(range(len(fitnesses)), key=lambda i: fitnesses[i])
+    return [population[i] for i in ranked[:n]]
+
+
 def crossover(parent1, parent2):
-    crossover_point = random.randint(1, sequence_length - 1)
-    child = parent1[:crossover_point] + parent2[crossover_point:]
-    return child
+    """Single-point crossover at a random phase boundary."""
+    point = random.randint(1, NUM_PHASES - 1) if NUM_PHASES > 1 else 1
+    return parent1[:point] + parent2[point:]
 
 
-# Mutation: Randomly swap two heuristics in a sequence or replace one with a random heuristic
-def mutate(sequence):
-    if random.random() < mutation_rate:
-        if random.random() < 0.5:
-            # Swap two elements
-            i, j = random.sample(range(sequence_length), 2)
-            sequence[i], sequence[j] = sequence[j], sequence[i]
-        else:
-            # Replace one element with a random heuristic
-            sequence[random.randint(0, sequence_length - 1)] = random.choice(available_heuristics)
-    return sequence
+def mutate(chromosome):
+    """Independently randomise each rule in each phase with probability MUTATION_RATE."""
+    return [
+        (
+            random.choice(SEQUENCING_RULES) if random.random() < MUTATION_RATE else seq,
+            random.choice(SCHEDULING_RULES) if random.random() < MUTATION_RATE else sched,
+        )
+        for seq, sched in chromosome
+    ]
 
 
-# Main Genetic Algorithm
-def genetic_algorithm(scheduler, tasks, processors):
-    # Initialize population
-    population = initialize_population()
-    
-    for generation in range(num_generations):
+# ------------------------------------------------------------------ #
+# Main GA loop                                                         #
+# ------------------------------------------------------------------ #
+def genetic_algorithm():
+    population = [random_chromosome() for _ in range(POPULATION_SIZE)]
+    best_ever, best_ever_fitness = None, float("inf")
+
+    for generation in range(NUM_GENERATIONS):
+        fitnesses = [evaluate(chromo) for chromo in population]
+
+        # Track global best (elitism)
+        gen_best_idx = min(range(len(fitnesses)), key=lambda i: fitnesses[i])
+        if fitnesses[gen_best_idx] < best_ever_fitness:
+            best_ever_fitness = fitnesses[gen_best_idx]
+            best_ever = population[gen_best_idx]
+
         print(f"\n--- Generation {generation + 1} ---")
-        
-        # Evaluate the fitness (makespan) of each sequence
-        fitnesses = []
-        for i, seq in enumerate(population):
-            makespan = evaluate_sequence(scheduler, seq, tasks, processors)
-            fitnesses.append(makespan)
-            print(f"Sequence {i + 1}: {seq} -> Makespan: {makespan:.2f}")
-        
-        # Select the best sequences
-        selected_population = select(population, fitnesses, population_size // 2)
-        
-        # Create the next generation through crossover and mutation
-        next_generation = selected_population[:]
-        while len(next_generation) < population_size:
-            parent1, parent2 = random.sample(selected_population, 2)
-            child = crossover(parent1, parent2)
-            child = mutate(child)
-            next_generation.append(child)
-        
-        # Replace old population with the new one
-        population = next_generation
-    
-    # Final evaluation of the last generation
-    print(f"\n--- Final Generation ---")
-    fitnesses = []
-    for i, seq in enumerate(population):
-        makespan = evaluate_sequence(scheduler, seq, tasks, processors)
-        fitnesses.append(makespan)
-        print(f"Sequence {i + 1}: {seq} -> Makespan: {makespan:.2f}")
-    
-    # Return the best sequence from the final population
-    best_sequence = population[fitnesses.index(min(fitnesses))]
-    print(f"\nBest sequence: {best_sequence} with Makespan: {min(fitnesses):.2f}")
-    
-    return best_sequence
+        for i, (chromo, fit) in enumerate(zip(population, fitnesses)):
+            marker = " *" if chromo == best_ever else ""
+            print(f"  [{i+1:2d}] {chromo} -> Makespan: {fit:.4f}{marker}")
+        print(f"  Best so far: Makespan {best_ever_fitness:.4f}")
+
+        survivors = select(population, fitnesses, POPULATION_SIZE // 2)
+
+        # Carry the global best unchanged into the next generation (elitism),
+        # then fill the rest via crossover + mutation.
+        next_gen = [best_ever]
+        while len(next_gen) < POPULATION_SIZE:
+            p1, p2 = random.sample(survivors, 2)
+            next_gen.append(mutate(crossover(p1, p2)))
+
+        population = next_gen
+
+    return best_ever, best_ever_fitness
 
 
-# Example usage (assuming you have Scheduler class and methods defined):
-scheduler = Scheduler(tasks, processors)
-best_sequence = genetic_algorithm(scheduler, tasks, processors)
+# ------------------------------------------------------------------ #
+# Entry point                                                          #
+# ------------------------------------------------------------------ #
+if __name__ == "__main__":
+    best_chromosome, best_makespan = genetic_algorithm()
+
+    print(f"\n=== Best chromosome: {best_chromosome} ===")
+    print(f"=== Makespan: {best_makespan:.4f} ===")
+
+    # Re-apply the best chromosome and show the final task assignment
+    evaluate(best_chromosome)
+
+    print("\n--- Final Task Assignment ---")
+    for p in processors:
+        task_ids = [t.task_id for t in p.tasks]
+        print(
+            f"  Processor {p.proc_id} (speed={p.speed:2d}): "
+            f"tasks={task_ids}, workload={p.get_total_workload():.4f}s"
+        )
+    print(f"Makespan: {best_makespan:.4f}s")
